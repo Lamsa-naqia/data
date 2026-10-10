@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>تقرير شركة لمسة نقية (Live)</title>
+    <title>التقرير المالي - شركة لمسة نقية</title>
     <!-- استدعاء مكتبة PapaParse لقراءة بيانات جوجل شيت -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
@@ -24,6 +24,22 @@
         /* Loading indicator */
         #loading { text-align: center; padding: 20px; font-weight: bold; color: #007bff; }
 
+        /* Filter Controls */
+        .filter-controls { background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #eee; display: flex; flex-direction: column; gap: 10px; }
+        .filter-title { font-weight: bold; color: #002060; text-align: center; margin-bottom: 5px;}
+        .filter-row { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+        @media (min-width: 600px) { .filter-row { flex-direction: row; align-items: center; justify-content: center; } }
+        
+        select, input[type="date"] { padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; font-size: 0.9em; width: 100%; outline: none;}
+        select:focus, input[type="date"]:focus { border-color: #002060; }
+        
+        .date-range { display: none; flex-direction: column; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;}
+        @media (min-width: 600px) { .date-range { flex-direction: row; align-items: center; justify-content: center; margin-top: 0; padding-top: 0; border-top: none; border-right: 1px dashed #ccc; padding-right: 10px; margin-right: 10px; display: inline-flex;} }
+        
+        .btn-apply { padding: 10px 15px; background: #002060; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%;}
+        @media (min-width: 600px) { .btn-apply { width: auto; } }
+        .btn-apply:hover { background: #001540; }
+
         /* Cards */
         .day-card { border: 1px solid #e0e0e0; border-radius: 10px; margin-bottom: 15px; padding: 15px; background: #fafafa; border-right: 5px solid #002060; }
         .day-header { font-size: 1.05em; font-weight: bold; margin-bottom: 15px; color: #002060; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #ddd; padding-bottom: 10px;}
@@ -42,13 +58,7 @@
         .total-line.negative { color: #dc3545; background: #fff1f1; }
         .notes { margin-top: 10px; font-size: 0.85em; color: #666; background: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba;}
         
-        .grid-container { background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #eee;}
-        .grid-title { font-weight: bold; color: #002060; margin-bottom: 10px; text-align: center;}
-        .nav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .side-btn { padding: 12px 5px; background: #fff; border: 1px solid #ddd; border-radius: 8px; font-weight: bold; color: #555; font-size: 0.9em; cursor: pointer;}
-        .side-btn.active { background: #002060; color: white; border-color: #002060;}
-        .btn-full { grid-column: span 2; background: #007bff; color: white; border-color: #007bff;}
-        .btn-full.active { background: #002060; border-color: #002060;}
+        #no-data-msg { text-align: center; color: #888; font-style: italic; display: none; padding: 20px; }
     </style>
 </head>
 <body>
@@ -61,25 +71,43 @@
             <div class="box net">صافي الدخل<span id="total-net">0.00 ريال</span></div>
         </div>
 
-        <div class="grid-container">
-            <div class="grid-title">تصفية النتائج:</div>
-            <div class="nav-grid" id="filter-buttons">
-                <button class="side-btn btn-full active" onclick="filterCards('all', this)">عرض جميع الأيام</button>
-                <!-- سيتم إضافة الأزرار هنا ديناميكياً -->
+        <div class="filter-controls">
+            <div class="filter-title">تصفية النتائج:</div>
+            <div class="filter-row">
+                <select id="filter-type" onchange="toggleDateRange()">
+                    <option value="all">عرض جميع الأيام</option>
+                    <option value="last7">آخر 7 أيام مسجلة</option>
+                    <option value="last30">آخر 30 يوماً</option>
+                    <option value="custom">تحديد نطاق مخصص (من - إلى)</option>
+                </select>
+                
+                <div id="date-range-container" class="date-range" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="font-size: 0.8em; color:#555;">من:</label>
+                        <input type="date" id="date-from">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="font-size: 0.8em; color:#555;">إلى:</label>
+                        <input type="date" id="date-to">
+                    </div>
+                </div>
+                
+                <button class="btn-apply" onclick="applyFilter()">تطبيق الفلتر</button>
             </div>
         </div>
 
         <div id="loading">جاري جلب البيانات من جوجل شيت...</div>
+        <div id="no-data-msg">لا توجد بيانات مطابقة للفلتر المحدد.</div>
         <div id="cards-container">
             <!-- سيتم حقن البطاقات هنا ديناميكياً -->
         </div>
     </div>
 
     <script>
-        // رابط جوجل شيت المباشر (تصدير كـ CSV)
         const sheetId = '15d_Qp8rnSJuBm6_fEuW4JkOVsgkGaXgPrYByGC0KnJM';
-        // نضيف نطاق محدد (مثلاً من A6 إلى R100) لتخطي الصفوف الأولى التي تحتوي على الإجماليات وعناوين مدمجة
         const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&range=A6:R1000`;
+        
+        let allData = []; // Store parsed data globally for filtering
 
         Papa.parse(csvUrl, {
             download: true,
@@ -87,7 +115,7 @@
             skipEmptyLines: true,
             complete: function(results) {
                 document.getElementById('loading').style.display = 'none';
-                processData(results.data);
+                processRawData(results.data);
             },
             error: function(err) {
                 document.getElementById('loading').innerText = 'حدث خطأ أثناء جلب البيانات. تأكد من أن الشيت عام.';
@@ -96,37 +124,24 @@
 
         function parseCurrency(value) {
             if (!value) return 0;
-            // إزالة أي مسافات أو علامات وتغيير الفاصلة إلى نقطة عشرية إذا لزم الأمر
             let cleanVal = value.toString().replace(/,/g, '').trim();
             let num = parseFloat(cleanVal);
             return isNaN(num) ? 0 : num;
         }
 
-        function processData(data) {
-            const container = document.getElementById('cards-container');
-            const filterContainer = document.getElementById('filter-buttons');
-            
-            let totalRevenue = 0;
-            let totalExpense = 0;
-            let totalNet = 0;
-
+        function processRawData(data) {
+            allData = []; // Clear array
             data.forEach((row, index) => {
-                const date = row['التاريخ'] ? row['التاريخ'].trim() : null;
+                const dateStr = row['التاريخ'] ? row['التاريخ'].trim() : null;
+                if (!dateStr || dateStr === 'الإجمالي' || dateStr === '') return;
                 
-                // تخطي الصفوف الفارغة أو صف الإجمالي (إذا تم التقاطه بالخطأ)
-                if (!date || date === 'الإجمالي' || date === '') return;
-
-                const desc = row['البيان والوصف'] || '';
-                
-                // الإيرادات
+                // Only process rows that have at least some basic revenue or expense data to avoid showing empty future rows
                 const incomeBase = parseCurrency(row['الإيرادات']);
                 const incomePlus = parseCurrency(row['نسبة +']);
                 const dailyIncome = incomeBase + incomePlus;
 
-                // المصروفات
                 const expPenalty = parseCurrency(row['الغرامة']);
                 const expMaterialCost = parseCurrency(row['تكلفة المواد']);
-                // row['تفاصيل المواد'] هو نص
                 const expGas = parseCurrency(row['البنزين']);
                 const expCarMaint = parseCurrency(row['صيانة السيارة']);
                 const expTiktok = parseCurrency(row['إعلانات تيك توك']);
@@ -138,98 +153,163 @@
 
                 const dailyExpense = expPenalty + expMaterialCost + expGas + expCarMaint + expTiktok + expGoogle + expHaraj + expCommPack + expMinus + expOther;
                 
-                // يمكنك أيضًا قراءة الصافي والإجمالي من الشيت مباشرة إذا أردت
-                // const sheetNet = parseCurrency(row['صافي الدخل']);
-                const dailyNet = dailyIncome - dailyExpense;
+                // Skip completely empty rows that might just have a date pre-filled
+                if (dailyIncome === 0 && dailyExpense === 0 && !row['البيان والوصف']) return;
 
-                const notes = row['ملاحظات'] || '';
+                let dateObj = new Date(dateStr);
+                if (isNaN(dateObj)) return; // Skip invalid dates
 
-                totalRevenue += dailyIncome;
-                totalExpense += dailyExpense;
-                totalNet += dailyNet;
-
-                // إنشاء معرف فريد لليوم للتصفية (باستخدام التاريخ نفسه إذا كان فريدًا أو اندكس)
-                const dateId = `day-${index}`;
-                // استخراج اليوم والشهر فقط للزر (مثال: 1 أكتوبر من 2026-10-01)
-                let displayDate = date;
-                try {
-                     const d = new Date(date);
-                     if(!isNaN(d)) {
-                         const options = { day: 'numeric', month: 'long' };
-                         displayDate = d.toLocaleDateString('ar-EG', options);
-                     }
-                } catch(e) {}
-
-                // إضافة زر التصفية
-                const btn = document.createElement('button');
-                btn.className = 'side-btn';
-                btn.innerText = displayDate;
-                btn.onclick = function() { filterCards(dateId, this); };
-                filterContainer.appendChild(btn);
-
-                // بناء بطاقة اليوم
-                const card = document.createElement('div');
-                card.className = 'day-card';
-                card.setAttribute('data-date', dateId);
-
-                let incomesHtml = '';
-                if (dailyIncome === 0) {
-                    incomesHtml = `<li style="color: #888; font-style: italic; justify-content: center;">لا توجد إيرادات مسجلة</li>`;
-                } else {
-                    if (incomeBase > 0) incomesHtml += `<li><span>الإيرادات:</span> <span>${incomeBase.toFixed(2)} ريال</span></li>`;
-                    if (incomePlus > 0) incomesHtml += `<li><span>نسبة (+):</span> <span>${incomePlus.toFixed(2)} ريال</span></li>`;
-                }
-
-                let expensesHtml = '';
-                if (dailyExpense === 0) {
-                    expensesHtml = `<li style="color: #888; font-style: italic; justify-content: center;">لا توجد مصروفات مسجلة</li>`;
-                } else {
-                    if (expTiktok > 0) expensesHtml += `<li><span>إعلانات تيك توك:</span> <span>${expTiktok.toFixed(2)} ريال</span></li>`;
-                    if (expGoogle > 0) expensesHtml += `<li><span>إعلانات جوجل:</span> <span>${expGoogle.toFixed(2)} ريال</span></li>`;
-                    if (expGas > 0) expensesHtml += `<li><span>البنزين:</span> <span>${expGas.toFixed(2)} ريال</span></li>`;
-                    if (expMaterialCost > 0) expensesHtml += `<li><span>تكلفة المواد:</span> <span>${expMaterialCost.toFixed(2)} ريال ${row['تفاصيل المواد'] ? '('+row['تفاصيل المواد']+')' : ''}</span></li>`;
-                    if (expPenalty > 0) expensesHtml += `<li><span>الغرامة:</span> <span>${expPenalty.toFixed(2)} ريال</span></li>`;
-                    if (expCarMaint > 0) expensesHtml += `<li><span>صيانة السيارة:</span> <span>${expCarMaint.toFixed(2)} ريال</span></li>`;
-                    if (expHaraj > 0) expensesHtml += `<li><span>عمولة حراج:</span> <span>${expHaraj.toFixed(2)} ريال</span></li>`;
-                    if (expCommPack > 0) expensesHtml += `<li><span>باقة الاتصالات:</span> <span>${expCommPack.toFixed(2)} ريال</span></li>`;
-                    if (expMinus > 0) expensesHtml += `<li><span>نسبة (-):</span> <span>${expMinus.toFixed(2)} ريال</span></li>`;
-                    if (expOther > 0) expensesHtml += `<li><span>مصروفات أخرى:</span> <span>${expOther.toFixed(2)} ريال</span></li>`;
-                }
-
-                // استخدم التاريخ الأصلي لعرضه في رأس البطاقة بالإضافة للوصف
-                card.innerHTML = `
-                    <div class="day-header">
-                        <span>${date}</span>
-                        <span class="desc">${desc}</span>
-                    </div>
-                    <div class="details">
-                        <div class="col">
-                            <div class="col-title">المداخيل</div>
-                            <ul>${incomesHtml}</ul>
-                        </div>
-                        <div class="col">
-                            <div class="col-title">المصروفات</div>
-                            <ul>${expensesHtml}</ul>
-                        </div>
-                    </div>
-                    <div class="total-line ${dailyNet < 0 ? 'negative' : ''}">صافي دخل اليوم: ${dailyNet.toFixed(2)} ريال</div>
-                    ${notes ? `<div class="notes">ملاحظة: ${notes}</div>` : ''}
-                `;
-                container.appendChild(card);
+                allData.push({
+                    dateObj: dateObj,
+                    dateStr: dateStr,
+                    displayDate: dateObj.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' }),
+                    desc: row['البيان والوصف'] || '',
+                    incomeBase: incomeBase,
+                    incomePlus: incomePlus,
+                    dailyIncome: dailyIncome,
+                    expPenalty: expPenalty,
+                    expMaterialCost: expMaterialCost,
+                    materialDetails: row['تفاصيل المواد'] || '',
+                    expGas: expGas,
+                    expCarMaint: expCarMaint,
+                    expTiktok: expTiktok,
+                    expGoogle: expGoogle,
+                    expHaraj: expHaraj,
+                    expCommPack: expCommPack,
+                    expMinus: expMinus,
+                    expOther: expOther,
+                    dailyExpense: dailyExpense,
+                    dailyNet: dailyIncome - dailyExpense,
+                    notes: row['ملاحظات'] || ''
+                });
             });
+            
+            // Sort data by date (newest first for better viewing)
+            allData.sort((a, b) => b.dateObj - a.dateObj);
+            
+            renderCards(allData);
+        }
 
-            // تحديث الإجماليات (استخدام الإجماليات المحسوبة، أو يمكن قراءتها من صف الإجمالي إذا فضلتم)
+        function toggleDateRange() {
+            const filterType = document.getElementById('filter-type').value;
+            const rangeContainer = document.getElementById('date-range-container');
+            if (filterType === 'custom') {
+                rangeContainer.style.display = window.innerWidth >= 600 ? 'inline-flex' : 'flex';
+            } else {
+                rangeContainer.style.display = 'none';
+            }
+        }
+
+        function applyFilter() {
+            const filterType = document.getElementById('filter-type').value;
+            let filteredData = [];
+            
+            if (allData.length === 0) return;
+
+            const now = new Date();
+            // Optional: Use the latest date in the dataset as the reference point instead of strictly 'today'
+            const latestRecordDate = allData[0].dateObj; 
+
+            if (filterType === 'all') {
+                filteredData = [...allData];
+            } else if (filterType === 'last7') {
+                // Get the top 7 most recent records
+                filteredData = allData.slice(0, 7);
+            } else if (filterType === 'last30') {
+                // Last 30 days from today
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                filteredData = allData.filter(d => d.dateObj >= thirtyDaysAgo);
+            } else if (filterType === 'custom') {
+                const fromVal = document.getElementById('date-from').value;
+                const toVal = document.getElementById('date-to').value;
+                
+                if (!fromVal && !toVal) {
+                    filteredData = [...allData];
+                } else {
+                    const fromDate = fromVal ? new Date(fromVal) : new Date('2000-01-01');
+                    const toDate = toVal ? new Date(toVal) : new Date('2100-01-01');
+                    // Set time to end of day for the 'to' date to include the whole day
+                    toDate.setHours(23, 59, 59, 999);
+                    
+                    filteredData = allData.filter(d => d.dateObj >= fromDate && d.dateObj <= toDate);
+                }
+            }
+            
+            renderCards(filteredData);
+        }
+
+        function renderCards(dataToRender) {
+            const container = document.getElementById('cards-container');
+            const noDataMsg = document.getElementById('no-data-msg');
+            container.innerHTML = '';
+            
+            let totalRevenue = 0;
+            let totalExpense = 0;
+            let totalNet = 0;
+
+            if (dataToRender.length === 0) {
+                noDataMsg.style.display = 'block';
+            } else {
+                noDataMsg.style.display = 'none';
+                
+                dataToRender.forEach(d => {
+                    totalRevenue += d.dailyIncome;
+                    totalExpense += d.dailyExpense;
+                    totalNet += d.dailyNet;
+
+                    const card = document.createElement('div');
+                    card.className = 'day-card';
+
+                    let incomesHtml = '';
+                    if (d.dailyIncome === 0) {
+                        incomesHtml = `<li style="color: #888; font-style: italic; justify-content: center;">لا توجد إيرادات مسجلة</li>`;
+                    } else {
+                        if (d.incomeBase > 0) incomesHtml += `<li><span>الإيرادات:</span> <span>${d.incomeBase.toFixed(2)} ريال</span></li>`;
+                        if (d.incomePlus > 0) incomesHtml += `<li><span>نسبة (+):</span> <span>${d.incomePlus.toFixed(2)} ريال</span></li>`;
+                    }
+
+                    let expensesHtml = '';
+                    if (d.dailyExpense === 0) {
+                        expensesHtml = `<li style="color: #888; font-style: italic; justify-content: center;">لا توجد مصروفات مسجلة</li>`;
+                    } else {
+                        if (d.expTiktok > 0) expensesHtml += `<li><span>إعلانات تيك توك:</span> <span>${d.expTiktok.toFixed(2)} ريال</span></li>`;
+                        if (d.expGoogle > 0) expensesHtml += `<li><span>إعلانات جوجل:</span> <span>${d.expGoogle.toFixed(2)} ريال</span></li>`;
+                        if (d.expGas > 0) expensesHtml += `<li><span>البنزين:</span> <span>${d.expGas.toFixed(2)} ريال</span></li>`;
+                        if (d.expMaterialCost > 0) expensesHtml += `<li><span>تكلفة المواد:</span> <span>${d.expMaterialCost.toFixed(2)} ريال ${d.materialDetails ? '('+d.materialDetails+')' : ''}</span></li>`;
+                        if (d.expPenalty > 0) expensesHtml += `<li><span>الغرامة:</span> <span>${d.expPenalty.toFixed(2)} ريال</span></li>`;
+                        if (d.expCarMaint > 0) expensesHtml += `<li><span>صيانة السيارة:</span> <span>${d.expCarMaint.toFixed(2)} ريال</span></li>`;
+                        if (d.expHaraj > 0) expensesHtml += `<li><span>عمولة حراج:</span> <span>${d.expHaraj.toFixed(2)} ريال</span></li>`;
+                        if (d.expCommPack > 0) expensesHtml += `<li><span>باقة الاتصالات:</span> <span>${d.expCommPack.toFixed(2)} ريال</span></li>`;
+                        if (d.expMinus > 0) expensesHtml += `<li><span>نسبة (-):</span> <span>${d.expMinus.toFixed(2)} ريال</span></li>`;
+                        if (d.expOther > 0) expensesHtml += `<li><span>مصروفات أخرى:</span> <span>${d.expOther.toFixed(2)} ريال</span></li>`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="day-header">
+                            <span>${d.displayDate}</span>
+                            <span class="desc">${d.desc}</span>
+                        </div>
+                        <div class="details">
+                            <div class="col">
+                                <div class="col-title">المداخيل</div>
+                                <ul>${incomesHtml}</ul>
+                            </div>
+                            <div class="col">
+                                <div class="col-title">المصروفات</div>
+                                <ul>${expensesHtml}</ul>
+                            </div>
+                        </div>
+                        <div class="total-line ${d.dailyNet < 0 ? 'negative' : ''}">صافي دخل اليوم: ${d.dailyNet.toFixed(2)} ريال</div>
+                        ${d.notes ? `<div class="notes">ملاحظة: ${d.notes}</div>` : ''}
+                    `;
+                    container.appendChild(card);
+                });
+            }
+
             document.getElementById('total-revenue').innerText = totalRevenue.toFixed(2) + ' ريال';
             document.getElementById('total-expense').innerText = totalExpense.toFixed(2) + ' ريال';
             document.getElementById('total-net').innerText = totalNet.toFixed(2) + ' ريال';
-        }
-
-        function filterCards(val, btn) {
-            document.querySelectorAll('.side-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.querySelectorAll('.day-card').forEach(c => {
-                c.style.display = (val === 'all' || c.getAttribute('data-date') === val) ? 'block' : 'none';
-            });
         }
     </script>
 </body>
