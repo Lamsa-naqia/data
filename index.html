@@ -135,12 +135,14 @@
                 const dateStr = row['التاريخ'] ? row['التاريخ'].trim() : null;
                 if (!dateStr || dateStr === 'الإجمالي' || dateStr === '') return;
                 
-                // Only process rows that have at least some basic revenue or expense data to avoid showing empty future rows
+                // تصحيح الخطأ: "الغرامة" تعتبر إيرادات (مخصومة من العمال) وليست مصروفات!
                 const incomeBase = parseCurrency(row['الإيرادات']);
                 const incomePlus = parseCurrency(row['نسبة +']);
-                const dailyIncome = incomeBase + incomePlus;
+                const incomePenalty = parseCurrency(row['الغرامة']); // غرامة تضاف للإيرادات
+                
+                const dailyIncome = incomeBase + incomePlus + incomePenalty;
 
-                const expPenalty = parseCurrency(row['الغرامة']);
+                // المصروفات الفعلية
                 const expMaterialCost = parseCurrency(row['تكلفة المواد']);
                 const expGas = parseCurrency(row['البنزين']);
                 const expCarMaint = parseCurrency(row['صيانة السيارة']);
@@ -151,13 +153,17 @@
                 const expMinus = parseCurrency(row['نسبة -']);
                 const expOther = parseCurrency(row['مصروفات أخرى']);
 
-                const dailyExpense = expPenalty + expMaterialCost + expGas + expCarMaint + expTiktok + expGoogle + expHaraj + expCommPack + expMinus + expOther;
+                const dailyExpense = expMaterialCost + expGas + expCarMaint + expTiktok + expGoogle + expHaraj + expCommPack + expMinus + expOther;
                 
-                // Skip completely empty rows that might just have a date pre-filled
+                // الاعتماد على الشيت مباشرة في الحسابات النهائية إذا أمكن، أو حسابها يدوياً
+                // هنا نحسبها يدوياً للتأكد من المرونة مع الفلاتر
+                const dailyNet = dailyIncome - dailyExpense;
+                
+                // تجاهل الصفوف المستقبلية الفارغة تماماً
                 if (dailyIncome === 0 && dailyExpense === 0 && !row['البيان والوصف']) return;
 
                 let dateObj = new Date(dateStr);
-                if (isNaN(dateObj)) return; // Skip invalid dates
+                if (isNaN(dateObj)) return; // تخطي التواريخ غير الصالحة
 
                 allData.push({
                     dateObj: dateObj,
@@ -166,8 +172,8 @@
                     desc: row['البيان والوصف'] || '',
                     incomeBase: incomeBase,
                     incomePlus: incomePlus,
+                    incomePenalty: incomePenalty,
                     dailyIncome: dailyIncome,
-                    expPenalty: expPenalty,
                     expMaterialCost: expMaterialCost,
                     materialDetails: row['تفاصيل المواد'] || '',
                     expGas: expGas,
@@ -179,12 +185,12 @@
                     expMinus: expMinus,
                     expOther: expOther,
                     dailyExpense: dailyExpense,
-                    dailyNet: dailyIncome - dailyExpense,
+                    dailyNet: dailyNet,
                     notes: row['ملاحظات'] || ''
                 });
             });
             
-            // Sort data by date (newest first for better viewing)
+            // ترتيب الأيام (الأحدث أولاً)
             allData.sort((a, b) => b.dateObj - a.dateObj);
             
             renderCards(allData);
@@ -206,17 +212,11 @@
             
             if (allData.length === 0) return;
 
-            const now = new Date();
-            // Optional: Use the latest date in the dataset as the reference point instead of strictly 'today'
-            const latestRecordDate = allData[0].dateObj; 
-
             if (filterType === 'all') {
                 filteredData = [...allData];
             } else if (filterType === 'last7') {
-                // Get the top 7 most recent records
                 filteredData = allData.slice(0, 7);
             } else if (filterType === 'last30') {
-                // Last 30 days from today
                 const thirtyDaysAgo = new Date();
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 filteredData = allData.filter(d => d.dateObj >= thirtyDaysAgo);
@@ -229,7 +229,6 @@
                 } else {
                     const fromDate = fromVal ? new Date(fromVal) : new Date('2000-01-01');
                     const toDate = toVal ? new Date(toVal) : new Date('2100-01-01');
-                    // Set time to end of day for the 'to' date to include the whole day
                     toDate.setHours(23, 59, 59, 999);
                     
                     filteredData = allData.filter(d => d.dateObj >= fromDate && d.dateObj <= toDate);
@@ -267,6 +266,7 @@
                     } else {
                         if (d.incomeBase > 0) incomesHtml += `<li><span>الإيرادات:</span> <span>${d.incomeBase.toFixed(2)} ريال</span></li>`;
                         if (d.incomePlus > 0) incomesHtml += `<li><span>نسبة (+):</span> <span>${d.incomePlus.toFixed(2)} ريال</span></li>`;
+                        if (d.incomePenalty > 0) incomesHtml += `<li><span>الغرامة (+):</span> <span>${d.incomePenalty.toFixed(2)} ريال</span></li>`;
                     }
 
                     let expensesHtml = '';
@@ -277,7 +277,6 @@
                         if (d.expGoogle > 0) expensesHtml += `<li><span>إعلانات جوجل:</span> <span>${d.expGoogle.toFixed(2)} ريال</span></li>`;
                         if (d.expGas > 0) expensesHtml += `<li><span>البنزين:</span> <span>${d.expGas.toFixed(2)} ريال</span></li>`;
                         if (d.expMaterialCost > 0) expensesHtml += `<li><span>تكلفة المواد:</span> <span>${d.expMaterialCost.toFixed(2)} ريال ${d.materialDetails ? '('+d.materialDetails+')' : ''}</span></li>`;
-                        if (d.expPenalty > 0) expensesHtml += `<li><span>الغرامة:</span> <span>${d.expPenalty.toFixed(2)} ريال</span></li>`;
                         if (d.expCarMaint > 0) expensesHtml += `<li><span>صيانة السيارة:</span> <span>${d.expCarMaint.toFixed(2)} ريال</span></li>`;
                         if (d.expHaraj > 0) expensesHtml += `<li><span>عمولة حراج:</span> <span>${d.expHaraj.toFixed(2)} ريال</span></li>`;
                         if (d.expCommPack > 0) expensesHtml += `<li><span>باقة الاتصالات:</span> <span>${d.expCommPack.toFixed(2)} ريال</span></li>`;
