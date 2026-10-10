@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>تقرير شركة لمسة نقية (Live)</title>
+    <!-- استدعاء مكتبة PapaParse لقراءة بيانات جوجل شيت -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 10px; }
+        .container { width: 100%; max-width: 800px; margin: auto; background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        h1 { text-align: center; color: #002060; border-bottom: 2px solid #002060; padding-bottom: 10px; margin-top: 5px; margin-bottom: 15px; font-size: 1.3em; font-weight: bold;}
+        
+        /* Dashboard */
+        .dashboard { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        @media (min-width: 600px) { .dashboard { flex-direction: row; } }
+        .box { padding: 15px; border-radius: 10px; text-align: center; color: white; font-weight: bold; font-size: 1em; flex: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
+        .revenue { background-color: #28a745; }
+        .expense { background-color: #dc3545; }
+        .net { background-color: #007bff; }
+        .box span { display: block; font-size: 1.4em; margin-top: 5px;}
+        
+        /* Loading indicator */
+        #loading { text-align: center; padding: 20px; font-weight: bold; color: #007bff; }
+
+        /* Cards */
+        .day-card { border: 1px solid #e0e0e0; border-radius: 10px; margin-bottom: 15px; padding: 15px; background: #fafafa; border-right: 5px solid #002060; }
+        .day-header { font-size: 1.05em; font-weight: bold; margin-bottom: 15px; color: #002060; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #ddd; padding-bottom: 10px;}
+        @media (min-width: 600px) { .day-header { flex-direction: row; justify-content: space-between; align-items: center;} }
+        .day-header span.desc { color: #555; font-size: 0.9em; }
+        
+        .details { display: flex; flex-direction: column; gap: 15px;}
+        @media (min-width: 600px) { .details { flex-direction: row; } }
+        .col { flex: 1; background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+        .col-title { font-weight: bold; border-bottom: 2px solid #002060; margin-bottom: 10px; padding-bottom: 5px; color: #333; font-size: 0.95em;}
+        ul { list-style-type: none; padding: 0; margin: 0; }
+        li { padding: 6px 0; font-size: 0.9em; color: #444; border-bottom: 1px dashed #ddd; display: flex; justify-content: space-between;}
+        li:last-child { border-bottom: none; }
+        
+        .total-line { margin-top: 15px; font-weight: bold; font-size: 1.05em; padding-top: 10px; border-top: 2px solid #ccc; color: #007bff; text-align: center; background: #eef5ff; padding: 10px; border-radius: 8px;}
+        .total-line.negative { color: #dc3545; background: #fff1f1; }
+        .notes { margin-top: 10px; font-size: 0.85em; color: #666; background: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba;}
+        
+        .grid-container { background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #eee;}
+        .grid-title { font-weight: bold; color: #002060; margin-bottom: 10px; text-align: center;}
+        .nav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .side-btn { padding: 12px 5px; background: #fff; border: 1px solid #ddd; border-radius: 8px; font-weight: bold; color: #555; font-size: 0.9em; cursor: pointer;}
+        .side-btn.active { background: #002060; color: white; border-color: #002060;}
+        .btn-full { grid-column: span 2; background: #007bff; color: white; border-color: #007bff;}
+        .btn-full.active { background: #002060; border-color: #002060;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>التقرير المالي - شركة لمسة نقية</h1>
+        
+        <div class="dashboard">
+            <div class="box revenue">إجمالي الإيرادات<span id="total-revenue">0.00 ريال</span></div>
+            <div class="box expense">إجمالي المصروفات<span id="total-expense">0.00 ريال</span></div>
+            <div class="box net">صافي الدخل<span id="total-net">0.00 ريال</span></div>
+        </div>
+
+        <div class="grid-container">
+            <div class="grid-title">تصفية النتائج:</div>
+            <div class="nav-grid" id="filter-buttons">
+                <button class="side-btn btn-full active" onclick="filterCards('all', this)">عرض جميع الأيام</button>
+                <!-- سيتم إضافة الأزرار هنا ديناميكياً -->
+            </div>
+        </div>
+
+        <div id="loading">جاري جلب البيانات من جوجل شيت...</div>
+        <div id="cards-container">
+            <!-- سيتم حقن البطاقات هنا ديناميكياً -->
+        </div>
+    </div>
+
+    <script>
+        // رابط جوجل شيت المباشر (تصدير كـ CSV)
+        const sheetId = '15d_Qp8rnSJuBm6_fEuW4JkOVsgkGaXgPrYByGC0KnJM';
+        // نضيف نطاق محدد (مثلاً من A6 إلى R100) لتخطي الصفوف الأولى التي تحتوي على الإجماليات وعناوين مدمجة
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&range=A6:R1000`;
+
+        Papa.parse(csvUrl, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                document.getElementById('loading').style.display = 'none';
+                processData(results.data);
+            },
+            error: function(err) {
+                document.getElementById('loading').innerText = 'حدث خطأ أثناء جلب البيانات. تأكد من أن الشيت عام.';
+            }
+        });
+
+        function parseCurrency(value) {
+            if (!value) return 0;
+            // إزالة أي مسافات أو علامات وتغيير الفاصلة إلى نقطة عشرية إذا لزم الأمر
+            let cleanVal = value.toString().replace(/,/g, '').trim();
+            let num = parseFloat(cleanVal);
+            return isNaN(num) ? 0 : num;
+        }
+
+        function processData(data) {
+            const container = document.getElementById('cards-container');
+            const filterContainer = document.getElementById('filter-buttons');
+            
+            let totalRevenue = 0;
+            let totalExpense = 0;
+            let totalNet = 0;
+
+            data.forEach((row, index) => {
+                const date = row['التاريخ'] ? row['التاريخ'].trim() : null;
+                
+                // تخطي الصفوف الفارغة أو صف الإجمالي (إذا تم التقاطه بالخطأ)
+                if (!date || date === 'الإجمالي' || date === '') return;
+
+                const desc = row['البيان والوصف'] || '';
+                
+                // الإيرادات
+                const incomeBase = parseCurrency(row['الإيرادات']);
+                const incomePlus = parseCurrency(row['نسبة +']);
+                const dailyIncome = incomeBase + incomePlus;
+
+                // المصروفات
+                const expPenalty = parseCurrency(row['الغرامة']);
+                const expMaterialCost = parseCurrency(row['تكلفة المواد']);
+                // row['تفاصيل المواد'] هو نص
+                const expGas = parseCurrency(row['البنزين']);
+                const expCarMaint = parseCurrency(row['صيانة السيارة']);
+                const expTiktok = parseCurrency(row['إعلانات تيك توك']);
+                const expGoogle = parseCurrency(row['إعلانات جوجل']);
+                const expHaraj = parseCurrency(row['عمولة حراج']);
+                const expCommPack = parseCurrency(row['باقة الاتصالات']);
+                const expMinus = parseCurrency(row['نسبة -']);
+                const expOther = parseCurrency(row['مصروفات أخرى']);
+
+                const dailyExpense = expPenalty + expMaterialCost + expGas + expCarMaint + expTiktok + expGoogle + expHaraj + expCommPack + expMinus + expOther;
+                
+                // يمكنك أيضًا قراءة الصافي والإجمالي من الشيت مباشرة إذا أردت
+                // const sheetNet = parseCurrency(row['صافي الدخل']);
+                const dailyNet = dailyIncome - dailyExpense;
+
+                const notes = row['ملاحظات'] || '';
+
+                totalRevenue += dailyIncome;
+                totalExpense += dailyExpense;
+                totalNet += dailyNet;
+
+                // إنشاء معرف فريد لليوم للتصفية (باستخدام التاريخ نفسه إذا كان فريدًا أو اندكس)
+                const dateId = `day-${index}`;
+                // استخراج اليوم والشهر فقط للزر (مثال: 1 أكتوبر من 2026-10-01)
+                let displayDate = date;
+                try {
+                     const d = new Date(date);
+                     if(!isNaN(d)) {
+                         const options = { day: 'numeric', month: 'long' };
+                         displayDate = d.toLocaleDateString('ar-EG', options);
+                     }
+                } catch(e) {}
+
+                // إضافة زر التصفية
+                const btn = document.createElement('button');
+                btn.className = 'side-btn';
+                btn.innerText = displayDate;
+                btn.onclick = function() { filterCards(dateId, this); };
+                filterContainer.appendChild(btn);
+
+                // بناء بطاقة اليوم
+                const card = document.createElement('div');
+                card.className = 'day-card';
+                card.setAttribute('data-date', dateId);
+
+                let incomesHtml = '';
+                if (dailyIncome === 0) {
+                    incomesHtml = `<li style="color: #888; font-style: italic; justify-content: center;">لا توجد إيرادات مسجلة</li>`;
+                } else {
+                    if (incomeBase > 0) incomesHtml += `<li><span>الإيرادات:</span> <span>${incomeBase.toFixed(2)} ريال</span></li>`;
+                    if (incomePlus > 0) incomesHtml += `<li><span>نسبة (+):</span> <span>${incomePlus.toFixed(2)} ريال</span></li>`;
+                }
+
+                let expensesHtml = '';
+                if (dailyExpense === 0) {
+                    expensesHtml = `<li style="color: #888; font-style: italic; justify-content: center;">لا توجد مصروفات مسجلة</li>`;
+                } else {
+                    if (expTiktok > 0) expensesHtml += `<li><span>إعلانات تيك توك:</span> <span>${expTiktok.toFixed(2)} ريال</span></li>`;
+                    if (expGoogle > 0) expensesHtml += `<li><span>إعلانات جوجل:</span> <span>${expGoogle.toFixed(2)} ريال</span></li>`;
+                    if (expGas > 0) expensesHtml += `<li><span>البنزين:</span> <span>${expGas.toFixed(2)} ريال</span></li>`;
+                    if (expMaterialCost > 0) expensesHtml += `<li><span>تكلفة المواد:</span> <span>${expMaterialCost.toFixed(2)} ريال ${row['تفاصيل المواد'] ? '('+row['تفاصيل المواد']+')' : ''}</span></li>`;
+                    if (expPenalty > 0) expensesHtml += `<li><span>الغرامة:</span> <span>${expPenalty.toFixed(2)} ريال</span></li>`;
+                    if (expCarMaint > 0) expensesHtml += `<li><span>صيانة السيارة:</span> <span>${expCarMaint.toFixed(2)} ريال</span></li>`;
+                    if (expHaraj > 0) expensesHtml += `<li><span>عمولة حراج:</span> <span>${expHaraj.toFixed(2)} ريال</span></li>`;
+                    if (expCommPack > 0) expensesHtml += `<li><span>باقة الاتصالات:</span> <span>${expCommPack.toFixed(2)} ريال</span></li>`;
+                    if (expMinus > 0) expensesHtml += `<li><span>نسبة (-):</span> <span>${expMinus.toFixed(2)} ريال</span></li>`;
+                    if (expOther > 0) expensesHtml += `<li><span>مصروفات أخرى:</span> <span>${expOther.toFixed(2)} ريال</span></li>`;
+                }
+
+                // استخدم التاريخ الأصلي لعرضه في رأس البطاقة بالإضافة للوصف
+                card.innerHTML = `
+                    <div class="day-header">
+                        <span>${date}</span>
+                        <span class="desc">${desc}</span>
+                    </div>
+                    <div class="details">
+                        <div class="col">
+                            <div class="col-title">المداخيل</div>
+                            <ul>${incomesHtml}</ul>
+                        </div>
+                        <div class="col">
+                            <div class="col-title">المصروفات</div>
+                            <ul>${expensesHtml}</ul>
+                        </div>
+                    </div>
+                    <div class="total-line ${dailyNet < 0 ? 'negative' : ''}">صافي دخل اليوم: ${dailyNet.toFixed(2)} ريال</div>
+                    ${notes ? `<div class="notes">ملاحظة: ${notes}</div>` : ''}
+                `;
+                container.appendChild(card);
+            });
+
+            // تحديث الإجماليات (استخدام الإجماليات المحسوبة، أو يمكن قراءتها من صف الإجمالي إذا فضلتم)
+            document.getElementById('total-revenue').innerText = totalRevenue.toFixed(2) + ' ريال';
+            document.getElementById('total-expense').innerText = totalExpense.toFixed(2) + ' ريال';
+            document.getElementById('total-net').innerText = totalNet.toFixed(2) + ' ريال';
+        }
+
+        function filterCards(val, btn) {
+            document.querySelectorAll('.side-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.day-card').forEach(c => {
+                c.style.display = (val === 'all' || c.getAttribute('data-date') === val) ? 'block' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>
